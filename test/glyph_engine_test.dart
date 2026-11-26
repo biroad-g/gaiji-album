@@ -175,4 +175,42 @@ void main() {
       expect(same.width, 400);
     });
   });
+
+  group('PixelRect（切り取り枠）', () {
+    test('copyWith は指定した辺だけを差し替える', () {
+      const base = PixelRect(10, 20, 110, 220);
+      final moved = base.copyWith(left: 40);
+      expect(moved.left, 40);
+      expect(moved.top, 20);
+      expect(moved.right, 110);
+      expect(moved.bottom, 220);
+    });
+
+    test('normalized は左右・上下が入れ替わった枠を正しい向きに戻す', () {
+      const flipped = PixelRect(200, 300, 100, 120);
+      final fixed = flipped.normalized();
+      expect(fixed.left, 100);
+      expect(fixed.top, 120);
+      expect(fixed.right, 200);
+      expect(fixed.bottom, 300);
+    });
+
+    test('反対側まで引き抜いても幅・高さは正のまま保たれる', () {
+      const dragged = PixelRect(150, 160, 40, 60);
+      final fixed = dragged.normalized();
+      expect(fixed.width, greaterThan(0));
+      expect(fixed.height, greaterThan(0));
+      expect(fixed.width, 110);
+      expect(fixed.height, 100);
+    });
+
+    test('clampTo は画像の外へはみ出さない', () {
+      const outside = PixelRect(-30, -40, 500, 900);
+      final clamped = outside.clampTo(400, 800);
+      expect(clamped.left, 0);
+      expect(clamped.top, 0);
+      expect(clamped.right, 400);
+      expect(clamped.bottom, 800);
+    });
+  });
 }

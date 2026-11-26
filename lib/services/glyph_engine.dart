@@ -41,6 +41,33 @@ class PixelRect {
 
   static PixelRect fromLTRB(double l, double t, double r, double b) =>
       PixelRect(l, t, r, b);
+
+  PixelRect copyWith({
+    double? left,
+    double? top,
+    double? right,
+    double? bottom,
+  }) =>
+      PixelRect(
+        left ?? this.left,
+        top ?? this.top,
+        right ?? this.right,
+        bottom ?? this.bottom,
+      );
+
+  /// 左右・上下が入れ替わった枠を正しい向きに戻す。
+  ///
+  /// 端を反対側まで引き抜いたときに、幅が負のままにならないようにする。
+  PixelRect normalized() => PixelRect(
+        math.min(left, right),
+        math.min(top, bottom),
+        math.max(left, right),
+        math.max(top, bottom),
+      );
+
+  @override
+  String toString() =>
+      'PixelRect($left, $top, $right, $bottom)';
 }
 
 /// 画像処理の設定

@@ -67,7 +67,8 @@ class _CropScreenState extends State<CropScreen> {
   GlyphExtractOptions _options = const GlyphExtractOptions();
 
   _Handle _active = _Handle.none;
-  PixelRect? _rectAtDragStart;
+  Offset? _dragOriginLocal;
+  PixelRect? _dragOriginRect;
 
   @override
   void initState() {
@@ -243,7 +244,7 @@ class _CropScreenState extends State<CropScreen> {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (d) => _onPanStart(d.localPosition, geo),
-          onPanUpdate: (d) => _onPanUpdate(d.delta, geo),
+          onPanUpdate: (d) => _onPanUpdate(d.localPosition, geo),
           onPanEnd: (_) => _onPanEnd(),
           onPanCancel: _onPanEnd,
           child: Stack(
@@ -264,11 +265,61 @@ class _CropScreenState extends State<CropScreen> {
                   ),
                 ),
               ),
+              // 拡大鏡（四隅を細かく合わせるため）
+              if (_active != _Handle.none && _active != _Handle.move)
+                ..._buildLoupe(geo),
             ],
           ),
         );
       },
     );
+  }
+
+  /// ドラッグ中のハンドル位置に拡大鏡を出す。
+  List<Widget> _buildLoupe(_Geometry geo) {
+    final rect = _rect;
+    final display = _display;
+    if (rect == null || display == null) return const [];
+
+    final box = geo.toDisplayRect(rect);
+    final anchor = _handleAnchor(box, _active);
+    if (anchor == null) return const [];
+
+    const radius = 46.0;
+    const zoom = 2.6;
+    final area = geo.area;
+
+    // 枠から離れた場所に固定表示する（枠に重なると字が見えなくなるため）。
+    // 枠の下半分を操作しているときは上に、上半分のときは下に出す。
+    final placeAbove = anchor.dy > area.height / 2;
+    final top = (placeAbove
+            ? box.top - radius * 2 - 18
+            : box.bottom + 18)
+        .clamp(4.0, math.max(4.0, area.height - radius * 2 - 4))
+        .toDouble();
+    final left = (anchor.dx - radius)
+        .clamp(4.0, math.max(4.0, area.width - radius * 2 - 4))
+        .toDouble();
+
+    return [
+      Positioned(
+        left: left,
+        top: top,
+        width: radius * 2,
+        height: radius * 2,
+        child: IgnorePointer(
+          child: CustomPaint(
+            painter: _LoupePainter(
+              image: display,
+              geometry: geo,
+              center: anchor,
+              radius: radius,
+              zoom: zoom,
+            ),
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _buildLoading(String message) {
@@ -390,7 +441,8 @@ class _CropScreenState extends State<CropScreen> {
         children: [
           if (ready) ...[
             Text(
-              '枠の四隅と辺をドラッグして、漢字一字を囲んでください。',
+              '枠の四隅（角）や辺を指でドラッグして、漢字一字を囲んでください。'
+              '枠の内側をドラッグすると、枠ごと動かせます。',
               style: TextStyle(
                 color: AppColors.paper.withValues(alpha: 0.72),
                 fontSize: 14,
@@ -443,22 +495,28 @@ class _CropScreenState extends State<CropScreen> {
   }
 
   // ---- ドラッグ操作 ----
+  //
+  // 移動量は「毎フレームの差分」ではなく「触り始めからの全体の移動量」で計算する。
+  // 差分方式だと、指の移動が大きい／更新が間引かれた環境で枠が追従しなくなるため。
 
   void _onPanStart(Offset local, _Geometry geo) {
     final rect = _rect;
     if (rect == null) return;
+    final handle = _hitTest(local, geo, rect);
     setState(() {
-      _active = _hitTest(local, geo, rect);
-      _rectAtDragStart = rect;
+      _active = handle;
+      _dragOriginLocal = local;
+      _dragOriginRect = rect;
     });
   }
 
   _Handle _hitTest(Offset local, _Geometry geo, PixelRect rect) {
     final r = geo.toDisplayRect(rect);
-    const grab = 44.0; // タップ範囲は広めに
+    const grab = 44.0; // タップ範囲は広めに（指で合わせやすく）
+    const reach = grab + 14;
 
     _Handle best = _Handle.none;
-    double bestDist = grab + 12;
+    double bestDist = reach;
 
     final corners = <_Handle, Offset>{
       _Handle.topLeft: r.topLeft,
@@ -475,39 +533,55 @@ class _CropScreenState extends State<CropScreen> {
     });
     if (best != _Handle.none) return best;
 
-    final edges = <_Handle, Offset>{
-      _Handle.top: Offset(r.center.dx, r.top),
-      _Handle.bottom: Offset(r.center.dx, r.bottom),
-      _Handle.left: Offset(r.left, r.center.dy),
-      _Handle.right: Offset(r.right, r.center.dy),
+    // 辺は「線分からの距離」で判定する（中央の丸だけでなく辺全体をつかめる）
+    final edges = <_Handle, double>{
+      _Handle.top: (local.dy - r.top).abs(),
+      _Handle.bottom: (local.dy - r.bottom).abs(),
+      _Handle.left: (local.dx - r.left).abs(),
+      _Handle.right: (local.dx - r.right).abs(),
     };
-    bestDist = grab + 12;
-    edges.forEach((handle, point) {
-      final d = (point - local).distance;
-      if (d < bestDist) {
-        bestDist = d;
+    edges.forEach((handle, dist) {
+      final withinSpan = switch (handle) {
+        _Handle.top || _Handle.bottom =>
+          local.dx >= r.left - grab && local.dx <= r.right + grab,
+        _Handle.left || _Handle.right =>
+          local.dy >= r.top - grab && local.dy <= r.bottom + grab,
+        _ => false,
+      };
+      if (withinSpan && dist < bestDist && dist <= grab) {
+        bestDist = dist;
         best = handle;
       }
     });
     if (best != _Handle.none) return best;
 
-    if (r.contains(local)) return _Handle.move;
+    if (r.inflate(24).contains(local)) return _Handle.move;
     return _Handle.none;
   }
 
-  void _onPanUpdate(Offset delta, _Geometry geo) {
-    final start = _rectAtDragStart;
-    if (start == null || _active == _Handle.none) return;
+  void _onPanUpdate(Offset local, _Geometry geo) {
+    final originRect = _dragOriginRect;
+    final originLocal = _dragOriginLocal;
+    if (originRect == null ||
+        originLocal == null ||
+        _active == _Handle.none) {
+      return;
+    }
 
-    final d = geo.toImageDelta(delta);
-    double l = start.left, t = start.top, r = start.right, b = start.bottom;
+    final d = geo.toImageDelta(local - originLocal);
+    double l = originRect.left;
+    double t = originRect.top;
+    double r = originRect.right;
+    double b = originRect.bottom;
 
     switch (_active) {
       case _Handle.move:
         final w = r - l;
         final h = b - t;
-        l = (l + d.dx).clamp(0, math.max(0, geo.imageWidth - w));
-        t = (t + d.dy).clamp(0, math.max(0, geo.imageHeight - h));
+        final maxL = math.max(0.0, geo.imageWidth - w);
+        final maxT = math.max(0.0, geo.imageHeight - h);
+        l = (l + d.dx).clamp(0.0, maxL);
+        t = (t + d.dy).clamp(0.0, maxT);
         r = l + w;
         b = t + h;
         break;
@@ -543,35 +617,64 @@ class _CropScreenState extends State<CropScreen> {
         return;
     }
 
-    const minSize = 12.0;
-    if (r - l < minSize) {
-      if (_active == _Handle.left ||
-          _active == _Handle.topLeft ||
-          _active == _Handle.bottomLeft) {
-        l = r - minSize;
-      } else {
-        r = l + minSize;
+    // 画像の外へはみ出さないようにする
+    final w = geo.imageWidth.toDouble();
+    final h = geo.imageHeight.toDouble();
+    l = l.clamp(0.0, w);
+    t = t.clamp(0.0, h);
+    r = r.clamp(0.0, w);
+    b = b.clamp(0.0, h);
+
+    // 反対側を追い越したら向きを入れ替える（幅・高さが反転して消えない）
+    final normalized = PixelRect(l, t, r, b).normalized();
+
+    // 最低サイズを確保しつつ、操作している辺だけを固定する
+    const minSize = 24.0;
+    double nl = normalized.left;
+    double nt = normalized.top;
+    double nr = normalized.right;
+    double nb = normalized.bottom;
+
+    if (nr - nl < minSize) {
+      switch (_active) {
+        case _Handle.left:
+        case _Handle.topLeft:
+        case _Handle.bottomLeft:
+          nl = math.max(0.0, nr - minSize);
+          break;
+        default:
+          nr = math.min(w, nl + minSize);
+          if (nr - nl < minSize) nl = math.max(0.0, nr - minSize);
       }
     }
-    if (b - t < minSize) {
-      if (_active == _Handle.top ||
-          _active == _Handle.topLeft ||
-          _active == _Handle.topRight) {
-        t = b - minSize;
-      } else {
-        b = t + minSize;
+    if (nb - nt < minSize) {
+      switch (_active) {
+        case _Handle.top:
+        case _Handle.topLeft:
+        case _Handle.topRight:
+          nt = math.max(0.0, nb - minSize);
+          break;
+        default:
+          nb = math.min(h, nt + minSize);
+          if (nb - nt < minSize) nt = math.max(0.0, nb - minSize);
       }
     }
 
-    setState(() {
-      _rect = PixelRect(l, t, r, b).clampTo(geo.imageWidth, geo.imageHeight);
-    });
+    final next = PixelRect(nl, nt, nr, nb);
+    if (next.left == _rect?.left &&
+        next.top == _rect?.top &&
+        next.right == _rect?.right &&
+        next.bottom == _rect?.bottom) {
+      return;
+    }
+    setState(() => _rect = next);
   }
 
   void _onPanEnd() {
     setState(() {
       _active = _Handle.none;
-      _rectAtDragStart = null;
+      _dragOriginLocal = null;
+      _dragOriginRect = null;
     });
   }
 }
@@ -706,33 +809,139 @@ class _CropPainter extends CustomPainter {
     }
   }
 
-  Offset? _handlePoint(Rect box, _Handle h) {
-    switch (h) {
-      case _Handle.topLeft:
-        return box.topLeft;
-      case _Handle.topRight:
-        return box.topRight;
-      case _Handle.bottomLeft:
-        return box.bottomLeft;
-      case _Handle.bottomRight:
-        return box.bottomRight;
-      case _Handle.top:
-        return Offset(box.center.dx, box.top);
-      case _Handle.bottom:
-        return Offset(box.center.dx, box.bottom);
-      case _Handle.left:
-        return Offset(box.left, box.center.dy);
-      case _Handle.right:
-        return Offset(box.right, box.center.dy);
-      case _Handle.move:
-      case _Handle.none:
-        return null;
-    }
-  }
+  Offset? _handlePoint(Rect box, _Handle h) => _handleAnchor(box, h);
 
   @override
   bool shouldRepaint(covariant _CropPainter old) =>
-      old.rect != rect || old.activeHandle != activeHandle;
+      old.rect?.left != rect?.left ||
+      old.rect?.top != rect?.top ||
+      old.rect?.right != rect?.right ||
+      old.rect?.bottom != rect?.bottom ||
+      old.activeHandle != activeHandle ||
+      old.geometry.scale != geometry.scale ||
+      old.geometry.origin != geometry.origin;
+}
+
+/// ハンドルの表示座標
+Offset? _handleAnchor(Rect box, _Handle h) {
+  switch (h) {
+    case _Handle.topLeft:
+      return box.topLeft;
+    case _Handle.topRight:
+      return box.topRight;
+    case _Handle.bottomLeft:
+      return box.bottomLeft;
+    case _Handle.bottomRight:
+      return box.bottomRight;
+    case _Handle.top:
+      return Offset(box.center.dx, box.top);
+    case _Handle.bottom:
+      return Offset(box.center.dx, box.bottom);
+    case _Handle.left:
+      return Offset(box.left, box.center.dy);
+    case _Handle.right:
+      return Offset(box.right, box.center.dy);
+    case _Handle.move:
+    case _Handle.none:
+      return null;
+  }
+}
+
+/// 指の下を拡大して見せる虫眼鏡。四隅を細かく合わせるために使う。
+class _LoupePainter extends CustomPainter {
+  _LoupePainter({
+    required this.image,
+    required this.geometry,
+    required this.center,
+    required this.radius,
+    required this.zoom,
+  });
+
+  final ui.Image image;
+  final _Geometry geometry;
+  final Offset center;
+  final double radius;
+  final double zoom;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final dst = Rect.fromCircle(center: c, radius: radius);
+
+    // 表示座標 → 表示用画像の座標
+    final imageRect = Rect.fromLTWH(
+      geometry.origin.dx,
+      geometry.origin.dy,
+      geometry.imageWidth * geometry.scale,
+      geometry.imageHeight * geometry.scale,
+    );
+    if (imageRect.width <= 0 || imageRect.height <= 0) return;
+    final k = image.width / imageRect.width;
+
+    final srcRadius = radius / zoom;
+    final src = Rect.fromCircle(
+      center: Offset(
+        (center.dx - imageRect.left) * k,
+        (center.dy - imageRect.top) * k,
+      ),
+      radius: srcRadius * k,
+    );
+
+    canvas.save();
+    canvas.clipPath(Path()..addOval(dst));
+    canvas.drawRect(dst, Paint()..color = const Color(0xFF141210));
+
+    final full = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final visible = src.intersect(full);
+    if (!visible.isEmpty && src.width > 0 && src.height > 0) {
+      double mapX(double v) => dst.left + (v - src.left) / src.width * dst.width;
+      double mapY(double v) => dst.top + (v - src.top) / src.height * dst.height;
+      final mapped = Rect.fromLTRB(
+        mapX(visible.left),
+        mapY(visible.top),
+        mapX(visible.right),
+        mapY(visible.bottom),
+      );
+      canvas.drawImageRect(
+        image,
+        visible,
+        mapped,
+        Paint()..filterQuality = FilterQuality.high,
+      );
+    }
+    canvas.restore();
+
+    // 縁と十字線
+    canvas.drawCircle(
+      c,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..color = AppColors.goldPale,
+    );
+    final cross = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..color = AppColors.goldPale.withValues(alpha: 0.85);
+    canvas.drawLine(
+      Offset(c.dx - radius * 0.55, c.dy),
+      Offset(c.dx + radius * 0.55, c.dy),
+      cross,
+    );
+    canvas.drawLine(
+      Offset(c.dx, c.dy - radius * 0.55),
+      Offset(c.dx, c.dy + radius * 0.55),
+      cross,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LoupePainter old) =>
+      old.center != center ||
+      old.image != image ||
+      old.radius != radius ||
+      old.zoom != zoom;
 }
 
 class _ToggleRow extends StatelessWidget {
