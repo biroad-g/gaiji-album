@@ -95,7 +95,13 @@ log "Web をビルドしています（CanvasKit 同梱・CDN 不使用）…"
   || fail "flutter build web に失敗しました。"
 
 # ------------------------------------------------------------
-# 4. ビルド結果の確認
+# 4. Service Worker にオフライン保存の後処理を加える
+# ------------------------------------------------------------
+log "オフライン保存の準備をしています…"
+python3 scripts/patch_service_worker.py || fail "Service Worker の後処理に失敗しました。"
+
+# ------------------------------------------------------------
+# 5. ビルド結果の確認
 # ------------------------------------------------------------
 if [ ! -f "build/web/index.html" ]; then
   fail "ビルド成果物 build/web/index.html が見つかりません。"
@@ -103,6 +109,15 @@ fi
 
 if [ ! -f "build/web/canvaskit/canvaskit.wasm" ]; then
   fail "CanvasKit が同梱されていません（--no-web-resources-cdn を確認してください）。"
+fi
+
+# Service Worker が登録される設定になっているか（オフライン起動の必須条件）
+if ! grep -q "serviceWorkerVersion" build/web/flutter_bootstrap.js; then
+  fail "Service Worker の登録設定がありません（オフラインで起動できません）。"
+fi
+
+if ! grep -q "flutter-app-cache" build/web/flutter_service_worker.js; then
+  fail "flutter_service_worker.js が生成されていません。"
 fi
 
 log "ビルド完了: $(du -sh build/web | cut -f1)"
