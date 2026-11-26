@@ -34,3 +34,4 @@ Thumbs.db
 # ログ
 server.log
 *.log
+.flutter_sdk_path

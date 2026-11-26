@@ -106,5 +106,13 @@
         }
       ]
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "FLUTTER_ROOT_OVERRIDE": "",
+      "CI": "1",
+      "PUB_CACHE": "/vercel/.cache/pub-cache",
+      "FLUTTER_CACHE_DIR": "/vercel/.cache/flutter-sdk"
+    }
+  }
 }
