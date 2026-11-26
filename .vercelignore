@@ -1,0 +1,25 @@
+# Flutter web のビルド成果物はリポジトリに含めない（Vercel 側でビルドする）
+build/
+
+# ローカルの Vercel 設定（プロジェクト ID などを含むため共有しない）
+.vercel/
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+
+# エディタ / OS
+.idea/
+.vscode/
+.DS_Store
+
+# ログ
+*.log
+server.log
