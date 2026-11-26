@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="寺院の外字を、字形画像として一字ずつ記録するオフラインアプリ">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="外字アルバム">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- iOS の入力欄自動拡大を抑止（入力は 18px 以上に設計済み） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>外字アルバム</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;                 /* ページ全体をスクロールさせない（iOS の座標ずれ防止） */
+      overscroll-behavior: none;        /* 引っ張って更新／押し下げを止める */
+      background-color: #F5F1E8;
+      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background: #F5F1E8;
+      font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+      color: #1E1B18;
+      z-index: 10;
+    }
+    #loading .mark {
+      width: 56px;
+      height: 56px;
+      border: 1.4px solid #8A6A2F;
+      border-radius: 6px;
+      position: relative;
+    }
+    #loading .mark::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 10%;
+      bottom: 10%;
+      width: 1.2px;
+      background: #8A6A2F;
+      opacity: .6;
+    }
+    #loading .label {
+      font-size: 15px;
+      letter-spacing: 2px;
+      color: #6B6357;
+    }
+    body.ready #loading { display: none; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="mark"></div>
+    <div class="label">外字アルバム</div>
+  </div>
+
+  <script>
+    // ページの押し下げ（iOS のラバーバンド）を止める
+    document.addEventListener('touchmove', function (e) {
+      if (e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+
+    // CanvasKit はアプリに同梱したものを読み込む（CDN に依存しない）
+    window.addEventListener('flutter-first-frame', function () {
+      document.body.classList.add('ready');
+    });
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

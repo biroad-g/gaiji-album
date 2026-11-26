@@ -1,0 +1,53 @@
+name: flutter_app
+description: "外字アルバム — 寺院の外字を字形画像として記録するオフラインアプリ"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # 状態管理
+  provider: 6.1.5+1
+
+  # 端末内保存（オフライン完結）
+  hive: 2.2.3
+  hive_flutter: 1.1.0
+
+  # 画像処理（切り取り・透過・縮小・PNG書き出し）
+  image: 4.5.4
+
+  # カメラ／写真選択
+  image_picker: 1.1.2
+
+  # 共有・書き出し
+  share_plus: 10.1.4
+  path_provider: 2.1.5
+
+  # Web でのダウンロード保存（PNG書き出し）
+  web: 1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: NotoSerifJP
+      fonts:
+        - asset: assets/fonts/NotoSerifJP-Subset.ttf
+    - family: NotoSansJP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-Subset.ttf
