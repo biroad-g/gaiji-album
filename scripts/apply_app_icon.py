@@ -25,7 +25,14 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT.parent / "assets" / "icons" / "app_icon.png"
+
+# 元画像はリポジトリ内の assets/icon/app_icon.png を正本とする。
+# （リポジトリ外の作業用コピーしか無い場合だけそちらを使う）
+_CANDIDATES = [
+    ROOT / "assets" / "icon" / "app_icon.png",
+    ROOT.parent / "assets" / "icons" / "app_icon.png",
+]
+SOURCE = next((p for p in _CANDIDATES if p.exists()), _CANDIDATES[0])
 RES = ROOT / "android" / "app" / "src" / "main" / "res"
 WEB = ROOT / "web"
 
